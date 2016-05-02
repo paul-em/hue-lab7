@@ -1,32 +1,38 @@
 var recording = false;
 var data, startTime, $btn, $recordings;
 
+// wait for dom elements to be loaded
 document.addEventListener("DOMContentLoaded", function (event) {
+    // access dom elements
     $btn = document.querySelector("button");
     $recordings = document.querySelector("#recordings");
+
     updateList();
+
+    // add button click action
     $btn.addEventListener("click", function () {
-        console.log("clicked");
+        // toggle recording state
         recording = !recording;
+
         if (recording) {
+            // set starting time and make sure the data store is empty
             startTime = Date.now();
             data = [];
             $btn.innerText = "Stop recording"
         } else {
-            console.log("stopped");
+            // stopped recording - now save it in db and update the list
             saveRecording(data, function () {
                 updateList();
             });
             $btn.innerText = "Record";
         }
     });
-
-
 });
 
 var chromeWindow = chrome.app.window.current();
 chromeWindow.onBoundsChanged.addListener(function (e) {
     if (recording) {
+        // push the necessary data into the temporary data array
         data.push({
             time: Date.now() - startTime,
             left: chromeWindow.innerBounds.left,
@@ -38,17 +44,23 @@ chromeWindow.onBoundsChanged.addListener(function (e) {
 });
 
 function playRecording(recordingData, startTime) {
+    // set startTime on first call of this function
     if (!startTime) {
         startTime = Date.now();
     }
     window.requestAnimationFrame(function () {
+        // get the current time of the animation
         var time = Date.now() - startTime;
 
+        // find the corresponding recorded data for the time
+        // Note: this could be done more efficiently by keeping track of the index and starting from this position instead of always starting to search from scratch
         var data = recordingData.find(function (item) {
             if (item.time >= time) {
                 return true;
             }
         });
+
+        // set the data and go to the next frame only if there actually is any data
         if (data) {
             chromeWindow.innerBounds.left = data.left;
             chromeWindow.innerBounds.top = data.top;
@@ -63,15 +75,20 @@ function playRecording(recordingData, startTime) {
 
 function updateList() {
     getRecordings(function (recordings) {
+        // reset the $recordings dom element
         $recordings.innerHTML = "";
+        // the database gave us the array with the oldest first, but we want to display the youngest first, so we reverse the array before looping
         recordings.reverse().forEach(function (recordingId) {
+            // create a new DOM element for the entry and insert the id as Date object string
             var p = document.createElement("p");
-            p.innerText = new Date(recordingId);
+            p.innerText = new Date(recordingId).toDateString();
             p.addEventListener("click", function () {
+                // on click on this object play the recording!
                 getRecording(recordingId, function (recording) {
                     playRecording(recording.data);
                 });
             });
+            // append the recorded data to the DOM
             $recordings.appendChild(p);
 
         });
@@ -83,6 +100,8 @@ function getRecording(id, callback) {
     openDb(function (db) {
         var tx = db.transaction("Recordings", "readonly");
         var store = tx.objectStore("Recordings");
+
+        // get the item with the matching id
         var getRecording = store.get(id);
         getRecording.onsuccess = function () {
             callback(getRecording.result);
@@ -99,9 +118,10 @@ function getRecordings(callback) {
     openDb(function (db) {
         var tx = db.transaction("Recordings", "readonly");
         var store = tx.objectStore("Recordings");
+
+        // just get all keys, we don't need all the data at this time
         var getAll = store.getAllKeys();
         getAll.onsuccess = function () {
-            console.log(getAll.result);
             callback(getAll.result);
         };
         // Close the db when the transaction is done
@@ -119,7 +139,7 @@ function saveRecording(data, callback) {
         var tx = db.transaction("Recordings", "readwrite");
         var store = tx.objectStore("Recordings");
 
-        // Add some data
+        // Add the data with date object as ID
         store.put({id: Date.now(), data: data});
 
         // Close the db when the transaction is done
@@ -130,6 +150,8 @@ function saveRecording(data, callback) {
     });
 }
 
+
+// helper function for opening the db
 function openDb(callback) {
     var request = indexedDB.open("MoveIt", 1);
 
